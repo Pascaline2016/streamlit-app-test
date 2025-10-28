@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import openpyxl
 import re
 from datetime import date, timedelta, datetime
 from io import BytesIO
@@ -1591,5 +1592,6 @@ if history_id_to_view:
         st.error(f"L'analyse avec l'ID {history_id_to_view} n'a pas été trouvée.")
         st.session_state["viewing_history_id"] = None
         st.rerun()
+
 
 
