@@ -15,6 +15,7 @@ import hashlib
 # --- NOUVELLE IMPORTATION pour la persistence ---
 import os 
 
+
 # Vérification optionnelle de la dépendance 'tabulate' (utile pour to_markdown dans le contexte IA)
 try:
     import tabulate
@@ -1591,3 +1592,4 @@ if history_id_to_view:
         st.error(f"L'analyse avec l'ID {history_id_to_view} n'a pas été trouvée.")
         st.session_state["viewing_history_id"] = None
         st.rerun()
+
