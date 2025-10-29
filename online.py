@@ -12,8 +12,6 @@ from google.genai.errors import APIError
 from google.genai import types 
 import json
 import hashlib
-# --- NOUVELLE IMPORTATION pour la persistence ---
-import os 
 
 
 # Vérification optionnelle de la dépendance 'tabulate' (utile pour to_markdown dans le contexte IA)
@@ -22,31 +20,6 @@ try:
 except ImportError:
     pass
 
-# ---------------------------
-# Constantes et Persistence (NOUVEAU)
-# ---------------------------
-HISTORY_FILE = "analysis_history.json"
-
-def load_history():
-    """Charge l'historique depuis le fichier JSON sur le disque."""
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            st.error(f"Erreur lors du chargement de l'historique : {e}")
-            # Si le fichier est corrompu, on retourne une liste vide pour ne pas bloquer l'app
-            return []
-    return []
-
-def save_history(history_list):
-    """Sauvegarde l'historique actuel dans le fichier JSON sur le disque."""
-    try:
-        # Utilisation de indent=4 pour une meilleure lisibilité du fichier JSON
-        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(history_list, f, indent=4)
-    except Exception as e:
-        st.error(f"Erreur lors de la sauvegarde de l'historique : {e}")
 
 # ---------------------------
 # Fonction pour fixer le chat input en bas et styliser les bulles de chat
@@ -133,13 +106,7 @@ def apply_custom_styles():
             margin-left: 0;
         }
 
-        /* Style des boutons dans l'historique */
-        .stButton button {
-            /* Ajustement de la taille des boutons d'action */
-            font-size: 0.8em;
-            padding: 5px 8px;
-            line-height: 1;
-        }
+        
         
         </style>
         """,
@@ -834,64 +801,8 @@ def save_current_analysis(
         
     unique_id = generate_analysis_id(sage_f_nums, erp_f_nums, sage_c_nums, erp_c_nums, date_debut, date_fin)
 
-    if any(a['id'] == unique_id for a in st.session_state["analysis_history"]):
-        st.info("Cette analyse a déjà été enregistrée (basé sur les totaux et la période).")
-        return False
-
-    # 🔹 Récupération des résultats existants depuis la session (pour Totaux + Recherche d'écarts)
-    df_gap_f = st.session_state.get("df_gap_f", pd.DataFrame())
-    df_gap_c = st.session_state.get("df_gap_c", pd.DataFrame())
-    df_tableaux_f = st.session_state.get("df_tableaux_f", pd.DataFrame())
-    df_tableaux_c = st.session_state.get("df_tableaux_c", pd.DataFrame())
-
-    # 🔹 Construction du bloc d’analyse complet
-    analysis_data = {
-        "id": unique_id,
-        "date_enregistrement": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-        "date_debut": date_debut.isoformat(),
-        "date_fin": date_fin.isoformat(),
-        "extraction_date": extraction_date.isoformat(),
-
-        # --- Totaux & Tableaux
-        "sage_f_nums": sage_f_nums, "erp_f_nums": erp_f_nums, "ecarts_f": ecarts_f,
-        "sage_c_nums": sage_c_nums, "erp_c_nums": erp_c_nums, "ecarts_c": ecarts_c,
-        "summary": get_total_summary(sage_f_nums, erp_f_nums, sage_c_nums, erp_c_nums),
-
-        # --- Tableaux et Recherche des écarts
-        "df_tableaux_f_json": df_tableaux_f.to_json(orient='split') if not df_tableaux_f.empty else None,
-        "df_tableaux_c_json": df_tableaux_c.to_json(orient='split') if not df_tableaux_c.empty else None,
-        "df_gap_f_json": df_gap_f.to_json(orient='split') if not df_gap_f.empty else None,
-        "df_gap_c_json": df_gap_c.to_json(orient='split') if not df_gap_c.empty else None,
-
-        # --- Réconciliation Ligne à Ligne
-        "df_reconciliation_f_json": df_reconciliation_f.to_json(orient='split') if not df_reconciliation_f.empty else None,
-        "df_reconciliation_c_json": df_reconciliation_c.to_json(orient='split') if not df_reconciliation_c.empty else None,
-    }
-
-    # 🔹 Sauvegarde dans l’historique
-    st.session_state["analysis_history"].insert(0, analysis_data)
-    save_history(st.session_state["analysis_history"])
-    st.success(f"Analyse complète enregistrée ({analysis_data['date_enregistrement']}).")
-    return True
-
-def load_analysis(history_id):
-    """Charge l'ID de l'analyse dans l'état de visualisation et reruns."""
-    st.session_state["viewing_history_id"] = history_id
-    st.session_state["selected_tab"] = "📜 Historique" 
-    st.rerun() 
-
-# --- FONCTION MODIFIÉE : AJOUT DE LA PERSISTENCE ---
-def delete_analysis(history_id):
-    """Supprime une analyse de l'historique ET sauvegarde sur disque."""
-    st.session_state["analysis_history"] = [
-        a for a in st.session_state["analysis_history"] if a["id"] != history_id
-    ]
-    if st.session_state["viewing_history_id"] == history_id:
-        st.session_state["viewing_history_id"] = None
     
-    save_history(st.session_state["analysis_history"]) # <-- NOUVEAU : Sauvegarde sur disque
-    st.info("Analyse supprimée.")
-    st.rerun()
+
 
 
 # ---------------------------
@@ -952,34 +863,18 @@ if 'df_reconciliation_c' not in st.session_state: st.session_state['df_reconcili
 if "messages" not in st.session_state: st.session_state["messages"] = []
 if "ia_context" not in st.session_state: st.session_state["ia_context"] = ""
 # NOUVELLE INITIALISATION : Chargement de l'historique depuis le fichier
-if "analysis_history" not in st.session_state: 
-    st.session_state["analysis_history"] = load_history() 
-if "viewing_history_id" not in st.session_state: st.session_state["viewing_history_id"] = None
 if "selected_tab" not in st.session_state: st.session_state["selected_tab"] = "Totaux"
 
-# ===============================================================
-# GESTION DU PARAMÈTRE D’URL (?view=...)
-# ===============================================================
-try:
-    params = st.query_params
-    if "view" in params and params["view"]:
-        candidate_id = params["view"]
-        if any(a.get("id") == candidate_id for a in st.session_state.get("analysis_history", [])):
-            st.session_state["viewing_history_id"] = candidate_id
-            st.session_state["selected_tab"] = "📜 Historique"
-except Exception as e:
-    st.warning(f"Erreur lecture des paramètres : {e}")
+
 
 
 # ---------------------------
 # Onglets Streamlit
 # ---------------------------
-tabs_list = ["Totaux", "Tableaux", "Nettoyage Excel", "🔍 Recherche des écarts", "🎯 Réconciliation Ligne-à-Ligne", "🤖 Interprétation IA", "📜 Historique"]
-# Forcer l'onglet si l'historique est actif
-if st.session_state.viewing_history_id is not None:
-    st.session_state["selected_tab"] = "📜 Historique"
+tabs_list = ["Totaux", "Tableaux", "🔍 Recherche des écarts", "🎯 Réconciliation Ligne-à-Ligne", "🤖 Interprétation IA"]
 
-tab1, tab2, tab0, tab_écarts, tab_reconciliation, tab_ia, tab_historique = st.tabs(tabs_list)
+ 
+tab1, tab2, tab_écarts, tab_reconciliation, tab_ia = st.tabs(tabs_list)
 
 # ... (contenu des onglets)
 cleaned_files = {}
@@ -1089,12 +984,10 @@ with tab2:
         st.info("Veuillez importer des fichiers pour voir les tableaux et graphiques.")
 
 
-with tab0:
-    st.subheader("🧹 Nettoyage des fichiers Excel")
+
     def clean_excel_file(uploaded_file, source="sage"):
-        # Logique de nettoyage... (inchangée)
         if uploaded_file is None:
-            return None
+            return None 
         try:
             ext = uploaded_file.name.split('.')[-1].lower()
             if ext == "xlsx":
@@ -1105,6 +998,8 @@ with tab0:
             else:
                 st.error("Format de fichier non supporté")
                 return None
+
+            # 🔹 Détection automatique de la ligne d'en-têtes
             header_row = None
             for i, row in df_raw.iterrows():
                 row_str = " ".join(str(x) for x in row.tolist()).lower()
@@ -1114,66 +1009,52 @@ with tab0:
             if header_row is None:
                 st.warning("Impossible de trouver la ligne d'en-têtes (Débit/Crédit)")
                 return None
+
+            # 🔹 Relecture propre
             uploaded_file.seek(0)
             if ext == "xlsx":
                 df = pd.read_excel(uploaded_file, engine="openpyxl", header=header_row)
             else:
                 df = pd.read_csv(uploaded_file, encoding="latin-1", on_bad_lines="skip", low_memory=False, header=header_row)
+
+            # 🔹 Nettoyage global
             df = df[~df.apply(lambda row: row.astype(str).str.lower().str.contains("total").any(), axis=1)]
-            df = df.dropna(axis=1, how="all")
-            df = df.loc[:, df.columns.notna()]
-            df = df.dropna(axis=0, how="all").reset_index(drop=True)
-            df = df.fillna(0)
+            df = df.dropna(axis=1, how="all").dropna(axis=0, how="all").reset_index(drop=True)
+            df = df.loc[:, df.columns.notna()].fillna(0)
+
+            # 🔹 Conversion des valeurs
             for col in df.columns:
                 if "débit" in str(col).lower() or "crédit" in str(col).lower():
-                    df[col] = df[col].apply(lambda x: parse_excel_number_like(x) if x is not None else 0.0)
                     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-            df = df.loc[:, (df != 0).any(axis=0)]
+
+            # 🔹 Renommage des colonnes selon la source
             if source == "sage":
-                new_cols = [
-                    "Numéro de compte", "Intitulé des comptes",
-                    "Débit 1", "Crédit 1",
-                    "Débit 2", "Crédit 2",
-                    "Débit 3", "Crédit 3"
-                ]
-            elif source == "erp":
-                new_cols = [
-                    "Compte ERP", "Nom ERP",
-                    "Débit 1", "Crédit 1",
-                    "Débit 2", "Crédit 2",
-                    "Débit 3", "Crédit 3"
-                ]
+                new_cols = ["Numéro de compte", "Intitulé des comptes", "Débit 1", "Crédit 1", "Débit 2", "Crédit 2", "Débit 3", "Crédit 3"]
+            else:
+                new_cols = ["Compte ERP", "Nom ERP", "Débit 1", "Crédit 1", "Débit 2", "Crédit 2", "Débit 3", "Crédit 3"]
             df.columns = new_cols[:len(df.columns)]
+
             return df
         except Exception as e:
             st.error(f"Erreur lors du nettoyage du fichier : {e}")
             return None
-            
+
+    # --- Chargement et affichage des fichiers ---
     files_dict = {
         "SAGE Fournisseurs": (sage_fournisseurs, "sage"),
         "ERP Fournisseurs": (erp_fournisseurs, "erp"),
         "SAGE Clients": (sage_clients, "sage"),
         "ERP Clients": (erp_clients, "erp")
     }
+
     for key, (f, source) in files_dict.items():
         if f:
-            df_clean = clean_excel_file(f, source=source)
+            df_clean = clean_excel_file(f, source)
             if df_clean is not None:
                 st.markdown(f"### 📂 {key} - Aperçu après nettoyage")
                 st.dataframe(df_clean.head(15))
                 cleaned_files[key] = df_clean
-    if cleaned_files:
-        st.markdown("## 📥 Téléchargement des fichiers nettoyés")
-        for key, df in cleaned_files.items():
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                df.to_excel(writer, index=False)
-            st.download_button(
-                label=f"Télécharger {key} nettoyé",
-                data=output.getvalue(),
-                file_name=f"{key.replace(' ', '_')}_nettoye.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+
 
 
 with tab_écarts:
@@ -1266,11 +1147,16 @@ with tab_écarts:
     run_gap_analysis("Clients", "SAGE Clients", "ERP Clients")
 
 
+
+
+from openpyxl import load_workbook
+from openpyxl.styles import Border, Side
+
+
 with tab_reconciliation:
     st.subheader("🎯 Réconciliation détaillée - Écarts individuels (SAGE - ERP)")
-    
+
     def run_reconciliation(entity_type, sage_key, erp_key, session_state_key):
-        # Logique de réconciliation ligne-à-ligne... (inchangée)
         st.markdown("---")
         st.markdown(f"## {entity_type} : Analyse des Écarts Ligne-à-Ligne")
         
@@ -1281,38 +1167,46 @@ with tab_reconciliation:
             st.info(f"Veuillez d'abord importer et nettoyer les fichiers SAGE et ERP {entity_type} dans l'onglet 'Nettoyage Excel'.")
             st.session_state[session_state_key] = pd.DataFrame()
             return
-            
+        
         sage_col = sage_f.columns[0]
         erp_col = erp_f.columns[0]
         correspondances = []
         erp_rows_used = set()
         
-        def split_blocks(s): return re.findall(r'\d+|[A-Za-z]+', str(s).strip())
+        def split_blocks(s): 
+            return re.findall(r'\d+|[A-Za-z]+', str(s).strip())
+        
         def is_match(sage_str, erp_str):
             sage_blocks = split_blocks(sage_str)
             erp_blocks = split_blocks(erp_str)
-            if not sage_blocks or not erp_blocks: return False
+            if not sage_blocks or not erp_blocks:
+                return False
             idx = 0
             for block in sage_blocks:
-                while idx < len(erp_blocks) and block != erp_blocks[idx]: idx += 1
-                if idx == len(erp_blocks): return False
+                while idx < len(erp_blocks) and block != erp_blocks[idx]:
+                    idx += 1
+                if idx == len(erp_blocks):
+                    return False
                 idx += 1
             return True
 
+        # --- Correspondances ---
         for _, sage_row in sage_f.iterrows():
             sage_str = str(sage_row[sage_col]).strip()
             for erp_idx, erp_row in erp_f.iterrows():
-                if erp_idx in erp_rows_used: continue
+                if erp_idx in erp_rows_used:
+                    continue
                 erp_str = str(erp_row[erp_col]).strip()
                 if is_match(sage_str, erp_str) or is_match(erp_str, sage_str):
                     merged_row = pd.concat([sage_row, erp_row], axis=0)
                     correspondances.append(merged_row)
                     erp_rows_used.add(erp_idx)
                     break
-                    
+        
         if correspondances:
             df_correspondances = pd.concat(correspondances, axis=1).T.reset_index(drop=True)
             cols = pd.Series(df_correspondances.columns)
+            
             for dup in cols[cols.duplicated()].unique():
                 if "Débit" in str(dup) or "Crédit" in str(dup):
                     indices = cols[cols == dup].index.values.tolist()
@@ -1323,24 +1217,58 @@ with tab_reconciliation:
             
             df_reconciliation = calculate_detailed_gaps(df_correspondances, entity_type)
             st.session_state[session_state_key] = df_reconciliation
+
             display_reconciliation_table(df_reconciliation, f"Détail des Écarts {entity_type}")
+
+            # --- 🔽 Bouton Télécharger Excel avec bordures ---
+            if not df_reconciliation.empty:
+                output = BytesIO()
+
+                # Étape 1 : écrire le DataFrame dans Excel
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_reconciliation.to_excel(writer, index=False, sheet_name=entity_type[:31])
+
+                output.seek(0)
+
+                # Étape 2 : ouvrir avec openpyxl pour appliquer les bordures
+                wb = load_workbook(output)
+                ws = wb.active
+
+                # Définir le style de bordure fine
+                thin_border = Border(
+                    left=Side(style='thin', color="000000"),
+                    right=Side(style='thin', color="000000"),
+                    top=Side(style='thin', color="000000"),
+                    bottom=Side(style='thin', color="000000")
+                )
+
+                # Appliquer la bordure à toutes les cellules remplies
+                for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
+                    for cell in row:
+                        cell.border = thin_border
+
+                # Étape 3 : sauvegarder de nouveau dans un buffer
+                bordered_output = BytesIO()
+                wb.save(bordered_output)
+                bordered_output.seek(0)
+
+                # Étape 4 : bouton de téléchargement
+                st.download_button(
+                    label=f"📥 Télécharger {entity_type}",
+                    data=bordered_output,
+                    file_name=f"Reconciliation_{entity_type}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
+
         else:
             st.info(f"Aucune correspondance {entity_type} trouvée pour l'analyse des écarts.")
             st.session_state[session_state_key] = pd.DataFrame()
 
+    # --- Exécution pour chaque entité ---
     run_reconciliation("Fournisseurs", "SAGE Fournisseurs", "ERP Fournisseurs", 'df_reconciliation_f')
     run_reconciliation("Clients", "SAGE Clients", "ERP Clients", 'df_reconciliation_c')
-
-    # NOUVEAU: Bouton d'enregistrement pour l'historique
-    st.markdown("---")
-    if st.button("💾 Enregistrer cette analyse dans l'historique", use_container_width=True):
-        save_current_analysis(
-            st.session_state['sage_nums_f'], st.session_state['erp_nums_f'], st.session_state['ecarts_f'], 
-            st.session_state['df_reconciliation_f'], 
-            st.session_state['sage_nums_c'], st.session_state['erp_nums_c'], st.session_state['ecarts_c'], 
-            st.session_state['df_reconciliation_c'], 
-            date_debut, date_fin, extraction_date
-        )
 
 
 # ---------------------------
@@ -1414,184 +1342,3 @@ with tab_ia:
 # ---------------------------
 # Onglet : Historique (MODIFIÉ)
 # ---------------------------
-
-with tab_historique:
-    st.subheader("📜 Historique des Analyses de Réconciliation")
-    
-    # Bouton pour revenir à l'analyse courante si l'historique est actif
-    if st.session_state.viewing_history_id is not None:
-        if st.button("↩ Quitter l'Historique et revenir à l'analyse courante", key="exit_hist_top"):
-            st.session_state["viewing_history_id"] = None
-            st.rerun()
-            
-    if not st.session_state["analysis_history"]:
-        st.info("Aucune analyse enregistrée pour le moment. Allez dans l'onglet 'Réconciliation Ligne-à-Ligne' pour enregistrer une analyse.")
-    else:
-        st.markdown("---")
-
-        # 1. EN-TÊTES DU TABLEAU D’HISTORIQUE
-        col_r, col_p, col_t, col_s, col_v, col_d = st.columns([1, 1.5, 1, 3, 0.5, 0.5])
-        with col_r: st.markdown("**Date Enreg.**")
-        with col_p: st.markdown("**Période Analysée**")
-        with col_t: st.markdown("**Date Données**")
-        with col_s: st.markdown("**Résumé Écart Net (F/C)**")
-        with col_v: st.markdown("**Voir**")
-        with col_d: st.markdown("**Suppr**")
-        st.markdown("---")
-        
-        # 2. AFFICHAGE DE CHAQUE ANALYSE ENREGISTRÉE
-        for a in st.session_state["analysis_history"]:
-            date_deb = date.fromisoformat(a['date_debut']).strftime('%d/%m/%Y')
-            date_fin = date.fromisoformat(a['date_fin']).strftime('%d/%m/%Y')
-            date_ext = date.fromisoformat(a['extraction_date']).strftime('%d/%m/%Y')
-            
-            col_r, col_p, col_t, col_s, col_v, col_d = st.columns([1, 1.5, 1, 3, 0.5, 0.5])
-            with col_r: st.caption(a["date_enregistrement"].split(' ')[0]) 
-            with col_p: st.caption(f"Du **{date_deb}** au **{date_fin}**", unsafe_allow_html=True)
-            with col_t: st.caption(date_ext)
-            with col_s: st.caption(a['summary'])
-            with col_v:
-                st.button("👁️", key=f"view_{a['id']}", on_click=load_analysis, args=(a['id'],), use_container_width=True)
-            with col_d:
-                st.button("🗑️", key=f"delete_{a['id']}", on_click=delete_analysis, args=(a['id'],), use_container_width=True)
-        
-        st.markdown("---")
-
-
-# ----------------------------------------------------
-# AFFICHAGE DE L'ANALYSE HISTORIQUE (hors des onglets)
-# ----------------------------------------------------
-history_id_to_view = st.session_state.get("viewing_history_id")
-
-if history_id_to_view:
-    current_analysis = next((a for a in st.session_state["analysis_history"] if a["id"] == history_id_to_view), None)
-    
-    if current_analysis:
-        # --- Récupération et reconstruction des données ---
-        date_debut_hist = date.fromisoformat(current_analysis['date_debut'])
-        date_fin_hist = date.fromisoformat(current_analysis['date_fin'])
-        extraction_date_hist = date.fromisoformat(current_analysis['extraction_date'])
-        
-        sage_f_nums = current_analysis['sage_f_nums']
-        erp_f_nums = current_analysis['erp_f_nums']
-        ecarts_f = current_analysis['ecarts_f']
-        sage_c_nums = current_analysis['sage_c_nums']
-        erp_c_nums = current_analysis['erp_c_nums']
-        ecarts_c = current_analysis['ecarts_c']
-
-        def try_read_json(key):
-            try:
-                return pd.read_json(current_analysis[key], orient='split') if current_analysis.get(key) else pd.DataFrame()
-            except ValueError:
-                return pd.DataFrame()
-
-        df_reconciliation_f = try_read_json('df_reconciliation_f_json')
-        df_reconciliation_c = try_read_json('df_reconciliation_c_json')
-        df_gap_f = try_read_json('df_gap_f_json')
-        df_gap_c = try_read_json('df_gap_c_json')
-        df_tableaux_f = try_read_json('df_tableaux_f_json')
-        df_tableaux_c = try_read_json('df_tableaux_c_json')
-
-        # --- En-tête ---
-        st.markdown("---")
-        st.header(f"Historique : Du {date_debut_hist.strftime('%d/%m/%Y')} au {date_fin_hist.strftime('%d/%m/%Y')}")
-        st.caption(f"Enregistré le : {current_analysis['date_enregistrement']} | Données du : {extraction_date_hist.strftime('%d/%m/%Y')}")
-        
-        if st.button("↩ Quitter l'Historique et revenir à l'analyse courante", key="exit_hist_bottom"):
-            st.session_state["viewing_history_id"] = None
-            st.rerun()
-
-        st.markdown("---")
-
-        # --- 1️⃣ Totaux agrégés ---
-        st.subheader("1️⃣ 📊 Résumé des Totaux")
-
-        # --- Fournisseurs ---
-        st.markdown("### ERP Fournisseurs")
-        try:
-            st.write(f"Solde d'ouverture : {erp_f_nums[0]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt débit : {erp_f_nums[1]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt crédit : {erp_f_nums[2]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Solde final : {erp_f_nums[3]:,.2f}".replace(",", " ").replace(".", ","))
-        except Exception:
-            st.info("Aucune donnée ERP Fournisseurs enregistrée.")
-
-        st.markdown("### SAGE Fournisseurs")
-        try:
-            st.write(f"Solde d'ouverture : {sage_f_nums[0]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt débit : {sage_f_nums[1]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt crédit : {sage_f_nums[2]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Solde final : {sage_f_nums[3]:,.2f}".replace(",", " ").replace(".", ","))
-        except Exception:
-            st.info("Aucune donnée SAGE Fournisseurs enregistrée.")
-
-        st.markdown("---")
-
-        # --- Clients ---
-        st.markdown("### ERP Clients")
-        try:
-            st.write(f"Solde d'ouverture : {erp_c_nums[0]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt débit : {erp_c_nums[1]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt crédit : {erp_c_nums[2]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Solde final : {erp_c_nums[3]:,.2f}".replace(",", " ").replace(".", ","))
-        except Exception:
-            st.info("Aucune donnée ERP Clients enregistrée.")
-
-        st.markdown("### SAGE Clients")
-        try:
-            st.write(f"Solde d'ouverture : {sage_c_nums[0]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt débit : {sage_c_nums[1]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Mvt crédit : {sage_c_nums[2]:,.2f}".replace(",", " ").replace(".", ","))
-            st.write(f"Solde final : {sage_c_nums[3]:,.2f}".replace(",", " ").replace(".", ","))
-        except Exception:
-            st.info("Aucune donnée SAGE Clients enregistrée.")
-
-        st.markdown("---")
-
-    
-
-        # --- 2️⃣ Tableaux enregistrés ---
-        st.subheader("1️⃣ Tableaux (SAGE vs ERP)")
-        if any(v != 0 for v in sage_f_nums) or any(v != 0 for v in erp_f_nums):
-            st.markdown("#### Fournisseurs")
-            render_html_table("Fournisseurs", None, None, extraction_date_hist, date_debut_hist, date_fin_hist,
-                              sage_nums=sage_f_nums, erp_nums=erp_f_nums, ecarts_raw=ecarts_f)
-        if any(v != 0 for v in sage_c_nums) or any(v != 0 for v in erp_c_nums):
-            st.markdown("#### Clients")
-            render_html_table("Clients", None, None, extraction_date_hist, date_debut_hist, date_fin_hist,
-                              sage_nums=sage_c_nums, erp_nums=erp_c_nums, ecarts_raw=ecarts_c)
-
-        st.markdown("---")
-        # --- 3️⃣ Résultats de la Recherche des Écarts ---
-        st.subheader("3️⃣ Résultats de la Recherche des Écarts (SAGE ↔ ERP)")
-        if not df_gap_f.empty:
-            st.markdown("#### Fournisseurs — Écarts")
-            st.dataframe(df_gap_f, use_container_width=True)
-        else:
-            st.info("Aucun écart enregistré pour les Fournisseurs.")
-        if not df_gap_c.empty:
-            st.markdown("#### Clients — Écarts")
-            st.dataframe(df_gap_c, use_container_width=True)
-        else:
-            st.info("Aucun écart enregistré pour les Clients.")
-
-        st.markdown("---")
-
-        # --- 4️⃣ Réconciliation Ligne-à-Ligne ---
-        st.subheader("4️⃣ Réconciliation Ligne-à-Ligne : Écarts individuels")
-        if not df_reconciliation_f.empty:
-            st.markdown("#### Fournisseurs — Réconciliation")
-            display_reconciliation_table(df_reconciliation_f, "Réconciliation Fournisseurs (Historique)")
-        if not df_reconciliation_c.empty:
-            st.markdown("#### Clients — Réconciliation")
-            display_reconciliation_table(df_reconciliation_c, "Réconciliation Clients (Historique)")
-        if df_reconciliation_f.empty and df_reconciliation_c.empty:
-            st.info("Aucune donnée de réconciliation enregistrée pour cette période.")
-            
-    else:
-        st.error(f"L'analyse avec l'ID {history_id_to_view} n'a pas été trouvée.")
-        st.session_state["viewing_history_id"] = None
-        st.rerun()
-
-
-
